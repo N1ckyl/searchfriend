@@ -1,0 +1,35 @@
+// Prisma Schema para SearchFriend
+// Compatible con MySQL (XAMPP) y PostgreSQL (Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Para MySQL local (XAMPP): provider = "mysql"
+  // Para PostgreSQL (Supabase): provider = "postgresql"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Estudiante {
+  id                Int              @id @default(autoincrement())
+  nombre            String           @db.VarChar(100)
+  telefono_whatsapp String?          @db.VarChar(20)
+  activo            Int              @default(1)
+  entregas          EntregaRegalo[]
+
+  @@map("estudiantes")
+}
+
+model EntregaRegalo {
+  id              Int        @id @default(autoincrement())
+  estudiante_id   Int
+  codigo_secreto  String     @unique @db.VarChar(10)
+  mensaje_anonimo String?    @db.Text
+  fecha_entrega   DateTime   @default(now())
+
+  estudiante      Estudiante @relation(fields: [estudiante_id], references: [id], onDelete: Cascade)
+
+  @@map("entregas_regalos")
+}
