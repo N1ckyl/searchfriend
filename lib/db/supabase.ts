@@ -32,7 +32,7 @@ export const supabaseAdapter = {
 
   async getEstudiantes(onlyActive = true): Promise<Estudiante[]> {
     const client = getSupabaseClient();
-    let query = client.from('estudiantes').select('id, nombre, telefono_whatsapp, activo').order('nombre', { ascending: true });
+    let query = client.from('estudiantes').select('id, nombre, telefono_whatsapp, activo, desbloqueado_admin').order('nombre', { ascending: true });
     if (onlyActive) {
       query = query.eq('activo', 1);
     }
@@ -45,7 +45,7 @@ export const supabaseAdapter = {
     const client = getSupabaseClient();
     const { data, error } = await client
       .from('estudiantes')
-      .select('id, nombre, telefono_whatsapp, activo')
+      .select('id, nombre, telefono_whatsapp, activo, desbloqueado_admin')
       .eq('id', id)
       .single();
     if (error) return null;

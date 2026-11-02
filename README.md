@@ -211,15 +211,32 @@ Student opens http://localhost:3000
 
 ## 🌐 Migrating to Production (Supabase + Vercel)
 
-1. Create a Supabase project and run `database.sql` in the SQL editor (convert `AUTO_INCREMENT` → `SERIAL`, `TINYINT` → `BOOLEAN`)
-2. Change `.env.local`:
-   ```env
-   DB_PROVIDER=supabase
-   NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-   ```
-3. Deploy to Vercel — it reads `.env` from the Vercel dashboard
-4. For WhatsApp on production, use `WHATSAPP_PROVIDER=cloudapi` with the Meta WhatsApp Cloud API
+### Step 1: Create your Supabase Project (Database)
+1. Go to **[supabase.com](https://supabase.com)** and create a free project.
+2. In the Supabase sidebar, click **SQL Editor** → **New Query**.
+3. Copy all contents of `supabase_schema.sql` from this repo, paste it, and click **Run**.
+4. Go to **Project Settings** → **API**.
+5. Copy your:
+   - **Project URL** (`https://xyz.supabase.co`)
+   - **anon / public key** or **service_role key**
+
+### Step 2: Deploy to Vercel
+1. Go to **[vercel.com](https://vercel.com)** and log in with your GitHub account.
+2. Click **Add New...** → **Project**.
+3. Select your repository: `searchfriend`.
+4. In the **Environment Variables** section, add:
+
+| Variable | Value | Description |
+|---|---|---|
+| `DB_PROVIDER` | `supabase` | Switches database from MySQL to Supabase |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://xxxx.supabase.co` | Your Supabase Project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGciOi...` | Your Supabase Service Role Key |
+| `ADMIN_PIN` | `your_secret_pin_here` | Your custom PIN to access `/admin` |
+| `WHATSAPP_PROVIDER` | `cloud_api` (or `mock`) | `cloud_api` for Meta WhatsApp Cloud API |
+| `WHATSAPP_CLOUD_API_TOKEN` | *(optional)* | Token from Meta Developer Console |
+| `WHATSAPP_CLOUD_API_PHONE_ID` | *(optional)* | Phone ID from Meta Developer Console |
+
+5. Click **Deploy**. Vercel will build and launch your application in ~1 minute with a free HTTPS URL!
 
 ---
 

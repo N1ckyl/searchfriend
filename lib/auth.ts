@@ -1,13 +1,17 @@
 import { NextRequest } from 'next/server';
 import crypto from 'crypto';
 
-const ADMIN_PIN = process.env.ADMIN_PIN;
-if (!ADMIN_PIN) throw new Error('ADMIN_PIN is not set in environment variables.');
+function getAdminPin(): string {
+  return process.env.ADMIN_PIN || '';
+}
+
 const AUTH_SECRET = process.env.AUTH_SECRET || 'searchfriend-secret-salt-2026';
 
 export function verifyAdminPin(pin: string): boolean {
   if (!pin) return false;
-  return pin.trim() === ADMIN_PIN.trim();
+  const adminPin = getAdminPin();
+  if (!adminPin) return false;
+  return pin.trim() === adminPin.trim();
 }
 
 export function generateAdminToken(): string {
