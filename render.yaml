@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: searchfriend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DB_PROVIDER
+        value: supabase
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://conujseunighimxxrfho.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        value: sb_publishable_kjOd3Q8i89cc8o1J4_sgVg_kdLo8FJX
+      - key: ADMIN_PIN
+        value: admin123
+      - key: WHATSAPP_PROVIDER
+        value: baileys

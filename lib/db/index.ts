@@ -6,9 +6,10 @@ export function getDbProvider(): 'mysql' | 'supabase' {
   if (process.env.DB_PROVIDER) {
     return process.env.DB_PROVIDER.toLowerCase() === 'supabase' ? 'supabase' : 'mysql';
   }
-  // Auto-detectar Supabase si estamos en Vercel o si existen variables de Supabase/Postgres
+  // Auto-detectar Supabase si estamos en Vercel/Render o si existen variables de Supabase/Postgres
   if (
     process.env.VERCEL === '1' ||
+    process.env.RENDER ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
     process.env.POSTGRES_URL
