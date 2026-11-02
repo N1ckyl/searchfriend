@@ -139,7 +139,7 @@ export default function StudentHomePage() {
         setEstudiantes(data.data);
         setFilteredEstudiantes(data.data);
       } else {
-        setErrorMsg('Could not connect to the MySQL database on XAMPP.');
+        setErrorMsg(data.error || 'Could not connect to the database.');
       }
     } catch {
       setErrorMsg('Error connecting to the server.');
