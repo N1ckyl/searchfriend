@@ -53,7 +53,10 @@ export async function initBaileys(): Promise<void> {
     const sock = makeWASocket({
       auth: authState,
       logger: pino({ level: 'silent' }),
-      printQRInTerminal: true,
+      printQRInTerminal: false,
+      browser: ['SearchFriend', 'Chrome', '1.0.0'],
+      syncFullHistory: false,
+      markOnlineOnConnect: true,
       defaultQueryTimeoutMs: 60000,
     });
 
@@ -144,12 +147,22 @@ export async function sendBaileysMessage(
       cleanPhone = '51' + cleanPhone; // Perú por defecto si son 9 dígitos
     }
 
-    const jid = `${cleanPhone}@s.whatsapp.net`;
-    const sent = await state.sock.sendMessage(jid, { text });
+    // Resolver JID exacto en WhatsApp
+    let targetJid = `${cleanPhone}@s.whatsapp.net`;
+    try {
+      const waResults = await state.sock.onWhatsApp(cleanPhone);
+      if (waResults && waResults.length > 0 && waResults[0]?.exists) {
+        targetJid = waResults[0].jid;
+      }
+    } catch (checkErr) {
+      console.warn('[WhatsApp Bot] onWhatsApp advertencia:', checkErr);
+    }
+
+    const sent = await state.sock.sendMessage(targetJid, { text });
 
     return {
       success: true,
-      messageId: sent?.key.id || `baileys_${Date.now()}`,
+      messageId: sent?.key?.id || `baileys_${Date.now()}`,
     };
   } catch (error: any) {
     console.error('[WhatsApp Bot Error al enviar mensaje]:', error);

@@ -343,7 +343,8 @@ export default function AdminPage() {
         showToast('success', 'Alerta de WhatsApp enviada directamente al celular');
         loadAdminData();
       } else {
-        showToast('error', data.error || 'No se pudo enviar la alerta');
+        const errorMsg = data.error || data.whatsapp?.error || 'No se pudo enviar la alerta';
+        showToast('error', errorMsg);
       }
     } catch {
       showToast('error', 'Error de conexión al reenviar');
@@ -846,10 +847,17 @@ export default function AdminPage() {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              codigo_secreto: entregas[0]?.codigo_secreto || 'TEST-123',
+                              test_phone: testPhone,
+                              test_message: testMessage,
                             }),
                           });
-                          showToast('success', 'Mensaje de prueba despachado');
+                          const data = await res.json();
+                          if (res.ok && data.success) {
+                            showToast('success', 'Mensaje de prueba despachado con éxito');
+                            loadAdminData();
+                          } else {
+                            showToast('error', data.error || data.whatsapp?.error || 'Error al enviar prueba');
+                          }
                         } catch {
                           showToast('error', 'Error al enviar prueba');
                         } finally {
@@ -988,12 +996,19 @@ export default function AdminPage() {
                     className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-xs space-y-1.5"
                   >
                     <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="text-emerald-400 font-bold">[{log.status}] vía {log.provider}</span>
+                      <span className={`font-bold ${log.status === 'SENT' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        [{log.status}] vía {log.provider}
+                      </span>
                       <span>{new Date(log.timestamp).toLocaleTimeString('es-PE')}</span>
                     </div>
                     <div className="text-slate-200">
                       <strong>Para:</strong> {log.studentName} ({log.to}) | <strong>Código:</strong> {log.secretCode}
                     </div>
+                    {log.error && (
+                      <div className="text-rose-400 text-xs bg-rose-950/40 border border-rose-900/50 p-2 rounded">
+                        <strong>Error:</strong> {log.error}
+                      </div>
+                    )}
                     <div className="p-2.5 rounded bg-slate-900/90 text-slate-300 text-[11px] whitespace-pre-wrap border border-slate-800 font-sans">
                       {log.messageText}
                     </div>

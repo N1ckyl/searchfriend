@@ -9,7 +9,23 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { codigo_secreto } = await req.json();
+    const { codigo_secreto, test_phone, test_message } = await req.json();
+
+    if (test_phone) {
+      const result = await sendWhatsAppNotification({
+        nombreEstudiante: 'Prueba',
+        telefonoDestino: test_phone,
+        codigoSecreto: 'TEST-0001',
+        mensajeAnonimo: test_message || 'Mensaje de prueba',
+      });
+      if (!result.success) {
+        return NextResponse.json(
+          { success: false, error: result.error || 'Error enviando prueba', whatsapp: result },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({ success: true, whatsapp: result });
+    }
 
     if (!codigo_secreto) {
       return NextResponse.json(
@@ -53,8 +69,20 @@ export async function POST(req: NextRequest) {
 
     const waLink = generateDirectWhatsAppLink(estudiante.telefono_whatsapp, msgText);
 
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.error || 'No se pudo enviar la alerta por WhatsApp',
+          whatsapp: result,
+          directLink: waLink,
+        },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({
-      success: result.success,
+      success: true,
       whatsapp: result,
       directLink: waLink,
     });
