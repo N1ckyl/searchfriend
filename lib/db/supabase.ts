@@ -5,13 +5,18 @@ let supabaseClient: SupabaseClient | null = null;
 
 function getSupabaseClient(): SupabaseClient {
   if (!supabaseClient) {
-    let supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+    let supabaseUrl = (
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      ''
+    ).trim();
     // Normalize url if it includes /rest/v1
     supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
 
     const supabaseKey = (
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
       ''
     ).trim();
 

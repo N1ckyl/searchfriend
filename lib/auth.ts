@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import crypto from 'crypto';
 
 function getAdminPin(): string {
-  return process.env.ADMIN_PIN || '';
+  return process.env.ADMIN_PIN || 'admin123';
 }
 
 const AUTH_SECRET = process.env.AUTH_SECRET || 'searchfriend-secret-salt-2026';

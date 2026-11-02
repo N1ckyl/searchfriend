@@ -86,7 +86,8 @@ export async function sendWhatsAppNotification(params: {
     mensajeAnonimo,
   });
 
-  const provider = (process.env.WHATSAPP_PROVIDER || 'baileys').toLowerCase();
+  const defaultProvider = process.env.VERCEL ? 'mock' : 'baileys';
+  const provider = (process.env.WHATSAPP_PROVIDER || defaultProvider).toLowerCase();
 
   // 1. Enviar mediante el Bot Autónomo de Baileys (WhatsApp Web Multi-Dispositivo)
   // Si provider es baileys o si el bot ya está conectado:

@@ -3,8 +3,19 @@ import { supabaseAdapter } from './supabase';
 import { Estudiante, EntregaRegalo } from '../types';
 
 export function getDbProvider(): 'mysql' | 'supabase' {
-  const provider = (process.env.DB_PROVIDER || 'mysql').toLowerCase();
-  return provider === 'supabase' ? 'supabase' : 'mysql';
+  if (process.env.DB_PROVIDER) {
+    return process.env.DB_PROVIDER.toLowerCase() === 'supabase' ? 'supabase' : 'mysql';
+  }
+  // Auto-detectar Supabase si estamos en Vercel o si existen variables de Supabase/Postgres
+  if (
+    process.env.VERCEL === '1' ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    process.env.POSTGRES_URL
+  ) {
+    return 'supabase';
+  }
+  return 'mysql';
 }
 
 function getAdapter() {
