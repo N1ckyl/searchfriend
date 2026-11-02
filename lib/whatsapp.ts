@@ -1,5 +1,5 @@
 import { WhatsAppResult } from './types';
-import { sendBaileysMessage, getBaileysStatus } from './whatsapp-baileys';
+import { sendBaileysMessage, getBaileysStatus, initBaileys, hasSavedCredentials } from './whatsapp-baileys';
 
 interface WhatsAppLogEntry {
   id: string;
@@ -91,8 +91,22 @@ export async function sendWhatsAppNotification(params: {
 
   // 1. Enviar mediante el Bot Autónomo de Baileys (WhatsApp Web Multi-Dispositivo)
   // Si provider es baileys o si el bot ya está conectado:
-  const baileysStatus = getBaileysStatus();
+  let baileysStatus = getBaileysStatus();
   if (provider === 'baileys' || baileysStatus.status === 'CONNECTED') {
+    // Si no está conectado, intentar restaurar la sesión automáticamente
+    if (baileysStatus.status !== 'CONNECTED') {
+      console.log('[WhatsApp Bot] Bot no conectado. Intentando conectar automáticamente...');
+      initBaileys().catch(console.error);
+
+      // Esperar hasta 6 segundos si hay credenciales guardadas
+      const startWait = Date.now();
+      while (Date.now() - startWait < 6000) {
+        await new Promise((r) => setTimeout(r, 600));
+        baileysStatus = getBaileysStatus();
+        if (baileysStatus.status === 'CONNECTED') break;
+      }
+    }
+
     if (baileysStatus.status === 'CONNECTED') {
       const baileysRes = await sendBaileysMessage(cleanPhone, messageText);
       if (baileysRes.success) {

@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
 import pino from 'pino';
+import { createClient } from '@supabase/supabase-js';
 
 export type BaileysStatus = 'DISCONNECTED' | 'INITIALIZING' | 'SCAN_QR' | 'CONNECTED';
 
@@ -35,6 +36,83 @@ globalForBaileys.baileysState = state;
 
 const AUTH_DIR = path.join(process.cwd(), 'whatsapp_auth');
 
+// Sincronización de la sesión con Supabase Storage (persiste tras reinicios/deploys)
+async function restoreAuthFromSupabase(): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return false;
+
+  try {
+    const supabase = createClient(url, key);
+    const { data: files, error } = await supabase.storage.from('whatsapp_auth').list();
+    if (error || !files || files.length === 0) return false;
+
+    if (!fs.existsSync(AUTH_DIR)) {
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+    }
+
+    let credsFound = false;
+    for (const f of files) {
+      if (!f.name || f.name.startsWith('.')) continue;
+      const { data: blob, error: dlErr } = await supabase.storage.from('whatsapp_auth').download(f.name);
+      if (dlErr || !blob) continue;
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      fs.writeFileSync(path.join(AUTH_DIR, f.name), buffer);
+      if (f.name === 'creds.json') credsFound = true;
+    }
+    console.log(`[WhatsApp Bot] Restaurados ${files.length} archivos de sesión desde Supabase Storage.`);
+    return credsFound;
+  } catch (err) {
+    console.warn('[WhatsApp Bot] Advertencia restaurando sesión desde Supabase:', err);
+    return false;
+  }
+}
+
+async function backupAuthToSupabase(): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key || !fs.existsSync(AUTH_DIR)) return;
+
+  try {
+    const supabase = createClient(url, key);
+    const files = fs.readdirSync(AUTH_DIR);
+    for (const fileName of files) {
+      if (fileName.startsWith('.')) continue;
+      const filePath = path.join(AUTH_DIR, fileName);
+      if (fs.statSync(filePath).isFile()) {
+        const fileContent = fs.readFileSync(filePath);
+        await supabase.storage.from('whatsapp_auth').upload(fileName, fileContent, { upsert: true });
+      }
+    }
+    console.log('[WhatsApp Bot] Sesión respaldada con éxito en Supabase.');
+  } catch (err) {
+    console.warn('[WhatsApp Bot] Advertencia respaldando sesión en Supabase:', err);
+  }
+}
+
+async function clearAuthFromSupabase(): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+
+  try {
+    const supabase = createClient(url, key);
+    const { data: files } = await supabase.storage.from('whatsapp_auth').list();
+    if (files && files.length > 0) {
+      const names = files.map((f) => f.name);
+      await supabase.storage.from('whatsapp_auth').remove(names);
+    }
+  } catch {}
+}
+
+export function hasSavedCredentials(): boolean {
+  try {
+    return fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
+  } catch {
+    return false;
+  }
+}
+
 export async function initBaileys(): Promise<void> {
   if (state.sock && (state.status === 'CONNECTED' || state.status === 'SCAN_QR')) {
     return;
@@ -46,6 +124,11 @@ export async function initBaileys(): Promise<void> {
   try {
     if (!fs.existsSync(AUTH_DIR)) {
       fs.mkdirSync(AUTH_DIR, { recursive: true });
+    }
+
+    // Intentar restaurar sesión desde Supabase si la carpeta local está vacía
+    if (!hasSavedCredentials()) {
+      await restoreAuthFromSupabase();
     }
 
     const { state: authState, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -62,7 +145,10 @@ export async function initBaileys(): Promise<void> {
 
     state.sock = sock;
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+      await saveCreds();
+      backupAuthToSupabase().catch(() => {});
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -92,10 +178,11 @@ export async function initBaileys(): Promise<void> {
             initBaileys();
           }, 3000);
         } else {
-          // Si cerró sesión, borrar carpeta de credenciales para permitir nuevo escaneo
+          // Si cerró sesión, borrar credenciales local y en Supabase
           try {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           } catch {}
+          clearAuthFromSupabase().catch(() => {});
         }
       } else if (connection === 'open') {
         state.status = 'CONNECTED';
@@ -106,6 +193,7 @@ export async function initBaileys(): Promise<void> {
         console.log(`\n======================================================`);
         console.log(`🟢 [WhatsApp Bot] Conectado exitosamente como: ${state.connectedPhone}`);
         console.log(`======================================================\n`);
+        backupAuthToSupabase().catch(() => {});
       }
     });
   } catch (error: any) {

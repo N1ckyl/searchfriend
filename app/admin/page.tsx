@@ -79,19 +79,17 @@ export default function AdminPage() {
     checkAuth();
   }, []);
 
-  // Polling del estado de WhatsApp si la pestaña de bot está abierta o si está escaneando QR
+  // Polling del estado de WhatsApp permanente cada 3.5 segundos
   useEffect(() => {
     if (!isAuthenticated) return;
 
     fetchBotStatus();
     const interval = setInterval(() => {
-      if (activeTab === 'bot_whatsapp' || botStatus.status === 'SCAN_QR' || botStatus.status === 'INITIALIZING') {
-        fetchBotStatus();
-      }
-    }, 3000);
+      fetchBotStatus();
+    }, 3500);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, activeTab, botStatus.status]);
+  }, [isAuthenticated]);
 
   const checkAuth = async () => {
     try {
