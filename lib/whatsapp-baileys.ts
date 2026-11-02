@@ -36,7 +36,16 @@ globalForBaileys.baileysState = state;
 
 const AUTH_DIR = path.join(process.cwd(), 'whatsapp_auth');
 
-// Sincronización de la sesión con Supabase Storage (persiste tras reinicios/deploys)
+// Solo respaldar los archivos esenciales de identidad para no saturar memoria ni red con cientos de pre-keys
+function isEssentialAuthFile(fileName: string): boolean {
+  if (fileName === 'creds.json') return true;
+  if (fileName.startsWith('device-list-')) return true;
+  if (fileName.startsWith('identity-key-')) return true;
+  if (fileName.startsWith('lid-mapping-')) return true;
+  return false;
+}
+
+// Sincronización optimizada de la sesión con Supabase Storage
 async function restoreAuthFromSupabase(): Promise<boolean> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -44,50 +53,76 @@ async function restoreAuthFromSupabase(): Promise<boolean> {
 
   try {
     const supabase = createClient(url, key);
-    const { data: files, error } = await supabase.storage.from('whatsapp_auth').list();
+    const { data: files, error } = await supabase.storage.from('whatsapp_auth').list('', { limit: 100 });
     if (error || !files || files.length === 0) return false;
 
     if (!fs.existsSync(AUTH_DIR)) {
       fs.mkdirSync(AUTH_DIR, { recursive: true });
     }
 
-    let credsFound = false;
-    for (const f of files) {
-      if (!f.name || f.name.startsWith('.')) continue;
-      const { data: blob, error: dlErr } = await supabase.storage.from('whatsapp_auth').download(f.name);
-      if (dlErr || !blob) continue;
-      const buffer = Buffer.from(await blob.arrayBuffer());
-      fs.writeFileSync(path.join(AUTH_DIR, f.name), buffer);
-      if (f.name === 'creds.json') credsFound = true;
-    }
-    console.log(`[WhatsApp Bot] Restaurados ${files.length} archivos de sesión desde Supabase Storage.`);
-    return credsFound;
+    const essentialFiles = files.filter((f) => isEssentialAuthFile(f.name));
+    if (essentialFiles.length === 0) return false;
+
+    await Promise.all(
+      essentialFiles.map(async (f) => {
+        try {
+          const { data: blob, error: dlErr } = await supabase.storage.from('whatsapp_auth').download(f.name);
+          if (!dlErr && blob) {
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            fs.writeFileSync(path.join(AUTH_DIR, f.name), buffer);
+          }
+        } catch {}
+      })
+    );
+
+    const hasCreds = fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
+    console.log(`[WhatsApp Bot] Sesión restaurada con éxito desde Supabase Storage (creds: ${hasCreds}).`);
+    return hasCreds;
   } catch (err) {
-    console.warn('[WhatsApp Bot] Advertencia restaurando sesión desde Supabase:', err);
+    console.warn('[WhatsApp Bot] Error restaurando sesión desde Supabase:', err);
     return false;
   }
 }
 
-async function backupAuthToSupabase(): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key || !fs.existsSync(AUTH_DIR)) return;
+let backupTimeout: NodeJS.Timeout | null = null;
+function scheduleBackupToSupabase(): void {
+  if (backupTimeout) clearTimeout(backupTimeout);
+  backupTimeout = setTimeout(async () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key || !fs.existsSync(AUTH_DIR)) return;
 
-  try {
-    const supabase = createClient(url, key);
-    const files = fs.readdirSync(AUTH_DIR);
-    for (const fileName of files) {
-      if (fileName.startsWith('.')) continue;
-      const filePath = path.join(AUTH_DIR, fileName);
-      if (fs.statSync(filePath).isFile()) {
-        const fileContent = fs.readFileSync(filePath);
-        await supabase.storage.from('whatsapp_auth').upload(fileName, fileContent, { upsert: true });
+    try {
+      const supabase = createClient(url, key);
+      const files = fs.readdirSync(AUTH_DIR).filter(isEssentialAuthFile);
+      await Promise.all(
+        files.map(async (fileName) => {
+          const filePath = path.join(AUTH_DIR, fileName);
+          if (fs.statSync(filePath).isFile()) {
+            const fileContent = fs.readFileSync(filePath);
+            await supabase.storage.from('whatsapp_auth').upload(fileName, fileContent, { upsert: true });
+          }
+        })
+      );
+      console.log(`[WhatsApp Bot] ${files.length} archivos de sesión respaldados en Supabase Storage.`);
+    } catch (err) {
+      console.warn('[WhatsApp Bot] Error respaldando sesión en Supabase:', err);
+    }
+  }, 2000);
+}
+
+let keepAliveInterval: NodeJS.Timeout | null = null;
+function startKeepAlive(): void {
+  if (keepAliveInterval) clearInterval(keepAliveInterval);
+  keepAliveInterval = setInterval(async () => {
+    if (state.sock && state.status === 'CONNECTED') {
+      try {
+        await state.sock.sendPresenceUpdate('available');
+      } catch (err) {
+        console.warn('[WhatsApp Bot KeepAlive]:', err);
       }
     }
-    console.log('[WhatsApp Bot] Sesión respaldada con éxito en Supabase.');
-  } catch (err) {
-    console.warn('[WhatsApp Bot] Advertencia respaldando sesión en Supabase:', err);
-  }
+  }, 25000);
 }
 
 async function clearAuthFromSupabase(): Promise<void> {
@@ -97,7 +132,7 @@ async function clearAuthFromSupabase(): Promise<void> {
 
   try {
     const supabase = createClient(url, key);
-    const { data: files } = await supabase.storage.from('whatsapp_auth').list();
+    const { data: files } = await supabase.storage.from('whatsapp_auth').list('', { limit: 100 });
     if (files && files.length > 0) {
       const names = files.map((f) => f.name);
       await supabase.storage.from('whatsapp_auth').remove(names);
@@ -114,7 +149,10 @@ export function hasSavedCredentials(): boolean {
 }
 
 export async function initBaileys(): Promise<void> {
-  if (state.sock && (state.status === 'CONNECTED' || state.status === 'SCAN_QR')) {
+  if (state.sock && state.status === 'CONNECTED') {
+    return;
+  }
+  if (state.status === 'INITIALIZING') {
     return;
   }
 
@@ -126,7 +164,7 @@ export async function initBaileys(): Promise<void> {
       fs.mkdirSync(AUTH_DIR, { recursive: true });
     }
 
-    // Intentar restaurar sesión desde Supabase si la carpeta local está vacía
+    // Intentar restaurar sesión desde Supabase si la carpeta local no tiene creds.json
     if (!hasSavedCredentials()) {
       await restoreAuthFromSupabase();
     }
@@ -147,7 +185,7 @@ export async function initBaileys(): Promise<void> {
 
     sock.ev.on('creds.update', async () => {
       await saveCreds();
-      backupAuthToSupabase().catch(() => {});
+      scheduleBackupToSupabase();
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -172,13 +210,14 @@ export async function initBaileys(): Promise<void> {
         state.qrCodeDataUrl = null;
         state.connectedPhone = null;
         state.sock = null;
+        if (keepAliveInterval) clearInterval(keepAliveInterval);
 
         if (shouldReconnect) {
           setTimeout(() => {
             initBaileys();
           }, 3000);
         } else {
-          // Si cerró sesión, borrar credenciales local y en Supabase
+          // Si cerró sesión voluntariamente, limpiar almacenamiento
           try {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           } catch {}
@@ -193,7 +232,8 @@ export async function initBaileys(): Promise<void> {
         console.log(`\n======================================================`);
         console.log(`🟢 [WhatsApp Bot] Conectado exitosamente como: ${state.connectedPhone}`);
         console.log(`======================================================\n`);
-        backupAuthToSupabase().catch(() => {});
+        startKeepAlive();
+        scheduleBackupToSupabase();
       }
     });
   } catch (error: any) {
